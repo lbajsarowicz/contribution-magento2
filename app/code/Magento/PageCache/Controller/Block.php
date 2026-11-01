@@ -108,8 +108,11 @@ abstract class Block extends \Magento\Framework\App\Action\Action
         if (!$handles || !$blocks) {
             return [];
         }
-        $blocks = $this->jsonSerializer->unserialize($blocks);
-        $handles = $this->base64jsonSerializer->unserialize($handles);
+        $params = $this->unserializeParams($blocks, $handles);
+        if ($params === null) {
+            return [];
+        }
+        [$blocks, $handles] = $params;
 
         $handleSize = (int) $this->config->getValue(self::XML_HANDLES_SIZE);
         $handles = ($handleSize && count($handles) > $handleSize)
@@ -133,6 +136,42 @@ abstract class Block extends \Magento\Framework\App\Action\Action
         }
 
         return $data;
+    }
+
+    /**
+     * Unserialize blocks and handles parameters, or return null when either of them is malformed
+     *
+     * @param mixed $blocks
+     * @param mixed $handles
+     * @return array|null [blocks, handles]
+     */
+    private function unserializeParams($blocks, $handles): ?array
+    {
+        if (!is_string($blocks) || !is_string($handles)) {
+            return null;
+        }
+        try {
+            $blocks = $this->jsonSerializer->unserialize($blocks);
+            $handles = $this->base64jsonSerializer->unserialize($handles);
+        } catch (\InvalidArgumentException $e) {
+            return null;
+        }
+        if (!$this->isListOfStrings($blocks) || !$this->isListOfStrings($handles)) {
+            return null;
+        }
+
+        return [$blocks, $handles];
+    }
+
+    /**
+     * Check that the value is an array holding only strings
+     *
+     * @param mixed $value
+     * @return bool
+     */
+    private function isListOfStrings($value): bool
+    {
+        return is_array($value) && count(array_filter($value, 'is_string')) === count($value);
     }
 
     /**

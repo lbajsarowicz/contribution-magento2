@@ -208,4 +208,45 @@ class EsiTest extends TestCase
 
         $this->action->execute();
     }
+
+    /**
+     * @param array|string $blocks
+     * @param string $handles
+     * @return void
+     */
+    #[DataProvider('malformedBlocksOrHandlesDataProvider')]
+    public function testExecuteRendersEmptyFragmentOnMalformedParams(array|string $blocks, string $handles): void
+    {
+        $this->requestMock->method('getParam')->willReturnMap([
+            ['blocks', '', $blocks],
+            ['handles', '', $handles],
+        ]);
+        $this->viewMock->expects($this->never())->method('loadLayout');
+        $this->responseMock->expects($this->once())->method('appendBody')->with('');
+        $this->responseMock->expects($this->once())->method('setPublicHeaders')->with(0);
+
+        $this->action->execute();
+    }
+
+    /**
+     * @return array
+     */
+    public static function malformedBlocksOrHandlesDataProvider(): array
+    {
+        $handles = base64_encode(json_encode(['default']));
+        $blocks = json_encode(['header']);
+
+        return [
+            'blocks as array' => [['header'], $handles],
+            'blocks not json' => ['{bad', $handles],
+            'blocks json scalar' => ['1', $handles],
+            'blocks with non-string name' => ['[[1]]', $handles],
+            'handles not json' => [$blocks, 'notjson'],
+            'handles json scalar' => [$blocks, base64_encode('1')],
+            'handles with empty nested array' => [$blocks, base64_encode('[[]]')],
+            'handles with empty nested object' => [$blocks, base64_encode('[{}]')],
+            'handles plain json with empty nested array' => [$blocks, '[[]]'],
+            'handles with bool element' => [$blocks, base64_encode('[true]')],
+        ];
+    }
 }

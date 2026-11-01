@@ -22,6 +22,7 @@ use Magento\Framework\Validator\RegexFactory;
 use Magento\PageCache\Controller\Block;
 use Magento\PageCache\Controller\Block\Render;
 use Magento\PageCache\Test\Unit\Block\Controller\StubBlock;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -253,5 +254,86 @@ class RenderTest extends TestCase
             ->with(json_encode($expectedData));
 
         $this->action->execute();
+    }
+
+    /**
+     * @param string $originalRequest
+     * @return void
+     */
+    #[DataProvider('invalidOriginalRequestDataProvider')]
+    public function testExecuteForwardsToNorouteOnInvalidOriginalRequest(string $originalRequest): void
+    {
+        $this->requestMock->method('isAjax')->willReturn(true);
+        $this->requestMock->method('getParam')->willReturnMap([
+            ['originalRequest', null, $originalRequest],
+            ['blocks', '', json_encode(['block1'])],
+            ['handles', '', base64_encode(json_encode(['handle1']))],
+        ]);
+        $this->requestMock->expects($this->never())->method('setRouteName');
+        $this->requestMock->expects($this->once())->method('setActionName')->with('noroute');
+        $this->requestMock->expects($this->once())->method('setDispatched')->with(false);
+        $this->viewMock->expects($this->never())->method('loadLayout');
+        $this->responseMock->expects($this->never())->method('appendBody');
+
+        $this->action->execute();
+    }
+
+    /**
+     * @return array
+     */
+    public static function invalidOriginalRequestDataProvider(): array
+    {
+        return [
+            'empty string' => [''],
+            'not json' => ['notjson'],
+            'json scalar' => ['1'],
+            'empty object' => ['{}'],
+            'missing uri' => ['{"route":"cms","controller":"index","action":"index"}'],
+            'non-string route' => ['{"route":[1],"controller":"index","action":"index","uri":"/"}'],
+            'null uri' => ['{"route":"cms","controller":"index","action":"index","uri":null}'],
+        ];
+    }
+
+    /**
+     * @param array|string $blocks
+     * @param string $handles
+     * @return void
+     */
+    #[DataProvider('malformedBlocksOrHandlesDataProvider')]
+    public function testExecuteReturnsEmptyResultOnMalformedBlocksOrHandles(array|string $blocks, string $handles): void
+    {
+        $this->requestMock->method('isAjax')->willReturn(true);
+        $this->requestMock->method('getParam')->willReturnMap([
+            ['originalRequest', null, null],
+            ['blocks', '', $blocks],
+            ['handles', '', $handles],
+        ]);
+        $this->viewMock->expects($this->never())->method('loadLayout');
+        $this->layoutCacheKeyMock->expects($this->never())->method('addCacheKeys');
+        $this->responseMock->expects($this->once())->method('appendBody')->with('[]');
+
+        $this->action->execute();
+    }
+
+    /**
+     * @return array
+     */
+    public static function malformedBlocksOrHandlesDataProvider(): array
+    {
+        $handles = base64_encode(json_encode(['default']));
+        $blocks = json_encode(['header']);
+
+        return [
+            'blocks as array' => [['header'], $handles],
+            'blocks not json' => ['{bad', $handles],
+            'blocks json scalar' => ['1', $handles],
+            'blocks with non-string name' => ['[[1]]', $handles],
+            'handles not json' => [$blocks, 'notjson'],
+            'handles json scalar' => [$blocks, base64_encode('1')],
+            'handles with empty nested array' => [$blocks, base64_encode('[[]]')],
+            'handles with empty nested object' => [$blocks, base64_encode('[{}]')],
+            'handles plain json with empty nested array' => [$blocks, '[[]]'],
+            'handles with bool element' => [$blocks, base64_encode('[true]')],
+        ];
     }
 }

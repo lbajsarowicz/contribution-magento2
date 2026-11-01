@@ -32,6 +32,10 @@ class Render extends \Magento\PageCache\Controller\Block implements HttpGetActio
             if ($origRequest && is_string($origRequest)) {
                 $origRequest = json_decode($origRequest, true);
             }
+            if (!$this->isValidOriginalRequest($origRequest)) {
+                $this->_forward('noroute');
+                return;
+            }
             $this->getRequest()->setRouteName($origRequest['route']);
             $this->getRequest()->setControllerName($origRequest['controller']);
             $this->getRequest()->setActionName($origRequest['action']);
@@ -54,5 +58,25 @@ class Render extends \Magento\PageCache\Controller\Block implements HttpGetActio
         $this->getResponse()->setPrivateHeaders(\Magento\PageCache\Helper\Data::PRIVATE_MAX_AGE_CACHE);
         $this->translateInline->processResponseBody($data);
         $this->getResponse()->appendBody(json_encode($data));
+    }
+
+    /**
+     * Check that the original request carries route, controller, action and uri as strings
+     *
+     * @param mixed $origRequest
+     * @return bool
+     */
+    private function isValidOriginalRequest($origRequest): bool
+    {
+        if (!is_array($origRequest)) {
+            return false;
+        }
+        foreach (['route', 'controller', 'action', 'uri'] as $key) {
+            if (!isset($origRequest[$key]) || !is_string($origRequest[$key])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
